@@ -1,0 +1,66 @@
+diff --git a/src/provider.ts b/src/provider.ts
+index f783a43..3675f77 100644
+--- a/src/provider.ts
++++ b/src/provider.ts
+@@ -547,6 +547,9 @@ async function forwardToOpenAI(
+   if (req.max_tokens) body.max_tokens = req.max_tokens;
+   if (req.temperature !== undefined) body.temperature = req.temperature;
+   if (req.top_p !== undefined) body.top_p = req.top_p;
++  if (req.stop !== undefined) body.stop = req.stop;
++  if (req.tools?.length) body.tools = req.tools;
++  if (req.tool_choice !== undefined) body.tool_choice = req.tool_choice;
+-
++
+   const url = `${config.baseUrl}/chat/completions`;
+   logger.info(`-> ${provider}: ${modelName} (tier=${tier}, stream=${stream})`);
+diff --git a/src/server.ts b/src/server.ts
+index d65312a..7de2ca3 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -226,6 +226,14 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) {
+       reasoning = decision.reasoning;
+-
++
+       logger.info(`[${stats.requests + 1}] Classified: tier=${tier} model=${routedModel} confidence=${decision.confidence.toFixed(2)} | ${reasoning}`);
+     }
++  } else if (/^tier\/(simple|medium|complex|reasoning)$/i.test(requestedModel)) {
++    const requestedTier = requestedModel.slice("tier/".length).toUpperCase();
++    const routingCfg = getRoutingConfig();
++    const tierConfig = routingCfg.tiers[requestedTier as keyof typeof routingCfg.tiers];
++    routedModel = tierConfig.primary;
++    tier = requestedTier;
++    reasoning = `selected tier: ${requestedTier.toLowerCase()}`;
++    logger.info(`[${stats.requests + 1}] Selected: tier=${tier} model=${routedModel}`);
+   } else {
+     // Explicit model requested — pass through
+@@ -304,6 +313,30 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
+       owned_by: "clawrouter",
+       permission: [],
+     },
++    {
++      id: "tier/simple",
++      object: "model",
++      created: Math.floor(Date.now() / 1000),
++      owned_by: "auto-model-switcher",
++    },
++    {
++      id: "tier/medium",
++      object: "model",
++      created: Math.floor(Date.now() / 1000),
++      owned_by: "auto-model-switcher",
++    },
++    {
++      id: "tier/complex",
++      object: "model",
++      created: Math.floor(Date.now() / 1000),
++      owned_by: "auto-model-switcher",
++    },
++    {
++      id: "tier/reasoning",
++      object: "model",
++      created: Math.floor(Date.now() / 1000),
++      owned_by: "auto-model-switcher",
++    },
+     {
+       id: "anthropic/claude-opus-4-6",
+       object: "model",

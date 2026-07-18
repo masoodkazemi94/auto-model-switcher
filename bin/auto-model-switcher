@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP_NAME="auto-model-switcher"
+DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+INSTALL_DIR="${DATA_HOME}/${APP_NAME}"
+CONFIG_DIR="${CONFIG_HOME}/${APP_NAME}"
+RUNTIME_BIN="${INSTALL_DIR}/runtime/node/bin"
+FREEROUTER_DIR="${INSTALL_DIR}/freerouter"
+SECRETS_FILE="${CONFIG_DIR}/secrets.env"
+PORT="${AUTO_MODEL_SWITCHER_PORT:-18800}"
+ENDPOINT="http://127.0.0.1:${PORT}"
+
+[[ -d "${RUNTIME_BIN}" ]] && export PATH="${RUNTIME_BIN}:${PATH}"
+
+log() { printf '[auto-model-switcher] %s\n' "$*"; }
+die() { printf '[auto-model-switcher] error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: auto-model-switcher <command>
+
+Commands:
+  configure [--manual]  Authorize OpenRouter and store the API key
+  update-models         Refresh and rank OpenRouter free models
+  pin <tier> <model>    Pin simple|medium|complex|reasoning to a free model
+  unpin <tier>          Remove a tier pin
+  start|stop|restart    Control the local router service
+  status                Show service and router status
+  logs                  Follow router logs
+  stats                 Show routing statistics
+  doctor                Check installation health
+  install-service       Install systemd/launchd services
+  install-vscode        Build and install the VS Code provider
+  test [prompt]         Send one non-streaming request
+  uninstall [--yes]     Remove app, service, configuration, and stored key
+EOF
+}
+
+require_install() {
+  [[ -d "${INSTALL_DIR}" ]] || die "Not installed. Run ./install.sh first"
+  command -v node >/dev/null 2>&1 || die "Node.js runtime missing"
+}
+
+write_manual_key() {
+  local key response_file status
+  mkdir -p "${CONFIG_DIR}"
+  printf 'OpenRouter API key: ' >&2
+  IFS= read -r -s key
+  printf '\n' >&2
+  [[ "${key}" == sk-or-* ]] || die "Key does not look like an OpenRouter key"
+  response_file="$(mktemp "${TMPDIR:-/tmp}/ams-key-check.XXXXXX")"
+  status="$(curl --config - <<EOF || true
+url = "https://openrouter.ai/api/v1/key"
+header = "Authorization: Bearer ${key}"
+output = "${response_file}"
+write-out = "%{http_code}"
+silent
+show-error
+EOF
+)"
+  rm -f -- "${response_file}"
+  [[ "${status}" == "200" ]] || die "OpenRouter rejected the key (HTTP ${status})"
+  umask 077
+  printf "OPENROUTER_API_KEY='%s'\n" "${key//\'/\'\\\'\'}" > "${SECRETS_FILE}"
+  chmod 600 "${SECRETS_FILE}"
+  unset key
+  log "API key stored in ${SECRETS_FILE}"
+}
+
+configure() {
+  require_install
+  if [[ "${1:-}" == "--manual" ]]; then
+    write_manual_key
+  else
+    node "${INSTALL_DIR}/scripts/openrouter-auth.mjs" "${SECRETS_FILE}"
+  fi
+  restart_service
+}
+
+update_models() {
+  require_install
+  node "${INSTALL_DIR}/scripts/update-models.mjs" --config-dir "${CONFIG_DIR}" "$@"
+  curl -fsS -X POST "${ENDPOINT}/reload-config" >/dev/null 2>&1 || true
+}
+
+service_action() {
+  local action="$1"
+  case "$(uname -s)" in
+    Linux)
+      systemctl --user "${action}" "${APP_NAME}.service"
+      ;;
+    Darwin)
+      local domain="gui/$(id -u)" plist="${HOME}/Library/LaunchAgents/io.github.auto-model-switcher.router.plist"
+      case "${action}" in
+        start) launchctl bootstrap "${domain}" "${plist}" 2>/dev/null || launchctl kickstart -k "${domain}/io.github.auto-model-switcher.router" ;;
+        stop) launchctl bootout "${domain}/io.github.auto-model-switcher.router" 2>/dev/null || true ;;
+        restart) launchctl kickstart -k "${domain}/io.github.auto-model-switcher.router" ;;
+      esac
+      ;;
+    *) die "Unsupported operating system" ;;
+  esac
+}
+
+restart_service() {
+  if [[ -e "${HOME}/.config/systemd/user/${APP_NAME}.service" || -e "${HOME}/Library/LaunchAgents/io.github.auto-model-switcher.router.plist" ]]; then
+    service_action restart
+  fi
+}
+
+install_service() {
+  require_install
+  mkdir -p "${CONFIG_DIR}"
+  case "$(uname -s)" in
+    Linux)
+      local unit_dir="${HOME}/.config/systemd/user"
+      mkdir -p "${unit_dir}"
+      sed \
+        -e "s|@INSTALL_DIR@|${INSTALL_DIR}|g" \
+        -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
+        "${INSTALL_DIR}/scripts/systemd/auto-model-switcher.service.in" > "${unit_dir}/${APP_NAME}.service"
+      sed \
+        -e "s|@INSTALL_DIR@|${INSTALL_DIR}|g" \
+        -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
+        "${INSTALL_DIR}/scripts/systemd/auto-model-switcher-update.service.in" > "${unit_dir}/${APP_NAME}-update.service"
+      cp "${INSTALL_DIR}/scripts/systemd/auto-model-switcher-update.timer" "${unit_dir}/${APP_NAME}-update.timer"
+      systemctl --user daemon-reload
+      systemctl --user enable --now "${APP_NAME}.service" "${APP_NAME}-update.timer"
+      ;;
+    Darwin)
+      local agent_dir="${HOME}/Library/LaunchAgents" log_dir="${HOME}/Library/Logs/${APP_NAME}"
+      mkdir -p "${agent_dir}" "${log_dir}"
+      sed \
+        -e "s|@INSTALL_DIR@|${INSTALL_DIR}|g" \
+        -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
+        -e "s|@HOME@|${HOME}|g" \
+        "${INSTALL_DIR}/scripts/launchd/io.github.auto-model-switcher.router.plist.in" > "${agent_dir}/io.github.auto-model-switcher.router.plist"
+      sed \
+        -e "s|@INSTALL_DIR@|${INSTALL_DIR}|g" \
+        -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
+        -e "s|@HOME@|${HOME}|g" \
+        "${INSTALL_DIR}/scripts/launchd/io.github.auto-model-switcher.update.plist.in" > "${agent_dir}/io.github.auto-model-switcher.update.plist"
+      launchctl bootout "gui/$(id -u)/io.github.auto-model-switcher.router" 2>/dev/null || true
+      launchctl bootout "gui/$(id -u)/io.github.auto-model-switcher.update" 2>/dev/null || true
+      launchctl bootstrap "gui/$(id -u)" "${agent_dir}/io.github.auto-model-switcher.router.plist"
+      launchctl bootstrap "gui/$(id -u)" "${agent_dir}/io.github.auto-model-switcher.update.plist"
+      ;;
+    *) die "Unsupported operating system" ;;
+  esac
+}
+
+install_vscode() {
+  require_install
+  command -v code >/dev/null 2>&1 || die "VS Code 'code' command not found"
+  local extension_dir="${INSTALL_DIR}/vscode-extension"
+  npm --prefix "${extension_dir}" ci --ignore-scripts
+  npm --prefix "${extension_dir}" run package
+  local vsix
+  vsix="$(find "${extension_dir}" -maxdepth 1 -name '*.vsix' -print -quit)"
+  [[ -n "${vsix}" ]] || die "VSIX package was not created"
+  code --install-extension "${vsix}" --force
+}
+
+status() {
+  case "$(uname -s)" in
+    Linux) systemctl --user --no-pager status "${APP_NAME}.service" || true ;;
+    Darwin) launchctl print "gui/$(id -u)/io.github.auto-model-switcher.router" 2>/dev/null | head -40 || true ;;
+  esac
+  curl -fsS "${ENDPOINT}/health" && printf '\n' || true
+}
+
+logs() {
+  case "$(uname -s)" in
+    Linux) journalctl --user -u "${APP_NAME}.service" -f ;;
+    Darwin) tail -F "${HOME}/Library/Logs/${APP_NAME}/router.log" "${HOME}/Library/Logs/${APP_NAME}/router.error.log" ;;
+  esac
+}
+
+doctor() {
+  local failures=0
+  check() {
+    if "$@" >/dev/null 2>&1; then printf 'ok   %s\n' "$*"; else printf 'fail %s\n' "$*"; failures=$((failures + 1)); fi
+  }
+  check command -v node
+  check command -v curl
+  check test -f "${FREEROUTER_DIR}/dist/server.js"
+  check test -s "${CONFIG_DIR}/freerouter.config.json"
+  check test -s "${SECRETS_FILE}"
+  check curl -fsS "${ENDPOINT}/health"
+  if command -v code >/dev/null 2>&1; then
+    check bash -c "code --list-extensions | grep -qx 'auto-model-switcher.auto-model-switcher'"
+  fi
+  [[ "${failures}" -eq 0 ]] || return 1
+}
+
+test_prompt() {
+  local prompt="${*:-Explain what this repository does in one sentence.}"
+  curl -fsS "${ENDPOINT}/v1/chat/completions" \
+    -H 'Content-Type: application/json' \
+    --data "$(node -e 'process.stdout.write(JSON.stringify({model:"auto",messages:[{role:"user",content:process.argv[1]}]}))' "${prompt}")"
+  printf '\n'
+}
+
+uninstall_app() {
+  [[ "${1:-}" == "--yes" ]] || die "Run 'auto-model-switcher uninstall --yes'. This deletes the stored API key."
+  case "$(uname -s)" in
+    Linux)
+      systemctl --user disable --now "${APP_NAME}.service" "${APP_NAME}-update.timer" 2>/dev/null || true
+      rm -f -- "${HOME}/.config/systemd/user/${APP_NAME}.service" \
+        "${HOME}/.config/systemd/user/${APP_NAME}-update.service" \
+        "${HOME}/.config/systemd/user/${APP_NAME}-update.timer"
+      systemctl --user daemon-reload
+      ;;
+    Darwin)
+      launchctl bootout "gui/$(id -u)/io.github.auto-model-switcher.router" 2>/dev/null || true
+      launchctl bootout "gui/$(id -u)/io.github.auto-model-switcher.update" 2>/dev/null || true
+      rm -f -- "${HOME}/Library/LaunchAgents/io.github.auto-model-switcher.router.plist" \
+        "${HOME}/Library/LaunchAgents/io.github.auto-model-switcher.update.plist"
+      ;;
+  esac
+  command -v code >/dev/null 2>&1 && code --uninstall-extension auto-model-switcher.auto-model-switcher >/dev/null 2>&1 || true
+  rm -f -- "${HOME}/.local/bin/${APP_NAME}"
+  rm -rf -- "${INSTALL_DIR}" "${CONFIG_DIR}"
+  log "Removed application, service, configuration, and stored API key"
+}
+
+command_name="${1:-help}"
+shift || true
+case "${command_name}" in
+  configure) configure "$@" ;;
+  update-models) update_models "$@" ;;
+  pin) [[ "$#" -eq 2 ]] || die "Usage: pin <tier> <model>"; update_models --pin "$1" "$2" ;;
+  unpin) [[ "$#" -eq 1 ]] || die "Usage: unpin <tier>"; update_models --unpin "$1" ;;
+  start|stop|restart) service_action "${command_name}" ;;
+  status) status ;;
+  logs) logs ;;
+  stats) curl -fsS "${ENDPOINT}/stats"; printf '\n' ;;
+  doctor) doctor ;;
+  install-service) install_service ;;
+  install-vscode) install_vscode ;;
+  test) test_prompt "$@" ;;
+  uninstall) uninstall_app "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto Model Switcher router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env bash @INSTALL_DIR@/scripts/run-freerouter.sh @INSTALL_DIR@ @CONFIG_DIR@
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

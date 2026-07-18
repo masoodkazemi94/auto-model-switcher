@@ -1,0 +1,74 @@
+{
+  "name": "auto-model-switcher",
+  "displayName": "Auto Model Switcher",
+  "description": "Use automatically ranked OpenRouter free models in VS Code Chat and Agent mode.",
+  "version": "0.1.0",
+  "publisher": "auto-model-switcher",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auto-model-switcher/auto-model-switcher.git"
+  },
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "language-models",
+    "openrouter",
+    "free-models"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguageModelChatProvider:auto-model-switcher",
+    "onCommand:auto-model-switcher.manage",
+    "onCommand:auto-model-switcher.status"
+  ],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "auto-model-switcher",
+        "displayName": "Auto Model Switcher",
+        "managementCommand": "auto-model-switcher.manage"
+      }
+    ],
+    "commands": [
+      {
+        "command": "auto-model-switcher.manage",
+        "title": "Auto Model Switcher: Configure"
+      },
+      {
+        "command": "auto-model-switcher.status",
+        "title": "Auto Model Switcher: Show Status"
+      },
+      {
+        "command": "auto-model-switcher.refreshModels",
+        "title": "Auto Model Switcher: Refresh Free Models"
+      }
+    ],
+    "configuration": {
+      "title": "Auto Model Switcher",
+      "properties": {
+        "autoModelSwitcher.endpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:18800",
+          "description": "Local FreeRouter endpoint."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "package": "vsce package --no-dependencies --out auto-model-switcher.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.2"
+  }
+}
