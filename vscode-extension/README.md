@@ -73,7 +73,7 @@ background service, refreshes free models, and installs this extension.
 
 | Choice | Behavior |
 | --- | --- |
-| **Auto Router** | Classifies each prompt locally and chooses the appropriate tier. |
+| **Automatic** | Classifies each prompt locally and chooses the appropriate tier. Named differently from VS Code's built-in Auto choice. |
 | **Fast** | Uses the fast tier for short questions and small edits. |
 | **Balanced** | Uses the general coding tier for everyday development. |
 | **Complex** | Uses the strongest available free tier for large or difficult work. |
@@ -94,6 +94,12 @@ daily model refresh changes them.
 Only models currently reporting zero prompt and completion prices, text input,
 and `tools` plus `tool_choice` support are eligible. Each tier also has free
 fallback models for rate limits or temporary provider failures.
+
+Every eligible model also appears as an individual direct choice below the five
+routing choices. Selecting **Tencent: Hy3 (free)**, for example, sends the
+request directly to Hy3 without automatic tier selection or FreeRouter
+fallbacks. Direct choices follow the live free catalog: newly eligible models
+appear after refresh, while expired or paid models disappear automatically.
 
 ## Agent mode and tools
 

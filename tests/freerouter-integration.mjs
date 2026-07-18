@@ -102,6 +102,17 @@ try {
   await waitForHealth(endpoint, child, childOutput);
   const upstreamHealth = await fetch(`${endpoint}/upstream-health`);
   assert.equal(upstreamHealth.status, 200, await upstreamHealth.text());
+  const automaticResponse = await fetch(`${endpoint}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "automatic",
+      messages: [{ role: "user", content: "Hello" }],
+      stream: true,
+    }),
+  });
+  assert.equal(automaticResponse.status, 200);
+  await automaticResponse.text();
   const response = await fetch(`${endpoint}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

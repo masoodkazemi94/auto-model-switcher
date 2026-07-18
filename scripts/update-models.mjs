@@ -159,6 +159,14 @@ export function buildMetadata(selected, eligible, pins) {
     source: MODELS_URL,
     eligibleModelCount: eligible.length,
     tiers,
+    availableModels: eligible
+      .map((model) => ({
+        id: model.id,
+        name: model.name ?? model.id,
+        ...getModelLimits(model),
+        expirationDate: model.expiration_date ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
 

@@ -78,4 +78,6 @@ test("metadata uses current provider context and output limits", () => {
   const metadata = buildMetadata(selected, models, {});
   assert.equal(metadata.tiers.complex.contextLength, 1_000_000);
   assert.equal(metadata.tiers.complex.maxOutputTokens, 65_536);
+  assert.equal(metadata.availableModels.length, models.length);
+  assert.ok(metadata.availableModels.some((entry) => entry.id === "vendor/mini-code-8b:free"));
 });

@@ -37,6 +37,14 @@ diff --git a/src/server.ts b/src/server.ts
 index d65312a..7de2ca3 100644
 --- a/src/server.ts
 +++ b/src/server.ts
+@@ -201,5 +201,5 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) {
+   let tier: string;
+   let reasoning: string;
+-
++
+-  if (requestedModel === "auto" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
++  if (requestedModel === "auto" || requestedModel === "automatic" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
+     // Check for user mode override (e.g., "max mode: ...", "/complex ...", "[reasoning] ...")
 @@ -226,6 +226,14 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) {
        reasoning = decision.reasoning;
 -
@@ -53,10 +61,16 @@ index d65312a..7de2ca3 100644
 +    logger.info(`[${stats.requests + 1}] Selected: tier=${tier} model=${routedModel}`);
    } else {
      // Explicit model requested — pass through
-@@ -304,6 +313,30 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
+@@ -304,6 +313,36 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
        owned_by: "clawrouter",
        permission: [],
      },
++    {
++      id: "automatic",
++      object: "model",
++      created: Math.floor(Date.now() / 1000),
++      owned_by: "auto-model-switcher",
++    },
 +    {
 +      id: "tier/simple",
 +      object: "model",
@@ -84,7 +98,7 @@ index d65312a..7de2ca3 100644
      {
        id: "anthropic/claude-opus-4-6",
        object: "model",
-@@ -344,6 +376,16 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
+@@ -344,6 +382,16 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
    }));
  }
 -
@@ -102,7 +116,7 @@ index d65312a..7de2ca3 100644
  /**
   * Handle GET /stats
   */
-@@ -414,6 +456,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+@@ -414,6 +462,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
        handleListModels(req, res);
      } else if (method === "GET" && url === "/health") {
        handleHealth(req, res);

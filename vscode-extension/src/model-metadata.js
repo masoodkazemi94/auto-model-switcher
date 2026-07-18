@@ -37,17 +37,38 @@ function tierLimits(tier, metadata) {
 }
 
 function resolveModelLimits(modelId, metadata) {
-  if (modelId === "auto") {
+  if (modelId === "automatic" || modelId === "auto") {
     const limits = TIER_IDS.map((tier) => tierLimits(tier, metadata));
     return {
       contextLength: Math.min(...limits.map((item) => item.contextLength)),
       maxOutputTokens: Math.min(...limits.map((item) => item.maxOutputTokens)),
       modelName: "Dynamic tier selection",
       modelId: "auto",
+      expirationDate: null,
+    };
+  }
+  if (modelId.startsWith("openrouter/")) {
+    const directId = modelId.slice("openrouter/".length);
+    const entry = metadata?.availableModels?.find((model) => model.id === directId);
+    return {
+      contextLength: validLimit(entry?.contextLength, DEFAULT_CONTEXT),
+      maxOutputTokens: validLimit(entry?.maxOutputTokens, DEFAULT_OUTPUT),
+      modelName: entry?.name || directId,
+      modelId: entry?.id || directId,
+      expirationDate: entry?.expirationDate ?? null,
     };
   }
   const tier = modelId.startsWith("tier/") ? modelId.slice(5) : "medium";
   return tierLimits(tier, metadata);
+}
+
+function buildDirectModels(metadata) {
+  return (metadata?.availableModels ?? []).map((model) => ({
+    id: `openrouter/${model.id}`,
+    name: model.name,
+    detail: "Direct free model",
+    direct: true,
+  }));
 }
 
 function formatTokens(value) {
@@ -60,6 +81,7 @@ function formatTokens(value) {
 }
 
 module.exports = {
+  buildDirectModels,
   formatTokens,
   metadataPath,
   readModelMetadata,

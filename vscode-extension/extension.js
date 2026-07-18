@@ -5,14 +5,15 @@ const path = require("node:path");
 const vscode = require("vscode");
 const { requestChatCompletion, toOpenAIMessages } = require("./src/openai");
 const {
+  buildDirectModels,
   formatTokens,
   metadataPath,
   readModelMetadata,
   resolveModelLimits,
 } = require("./src/model-metadata");
 
-const MODELS = [
-  { id: "auto", name: "Auto Router", detail: "Automatic task routing" },
+const ROUTING_MODELS = [
+  { id: "automatic", name: "Automatic", detail: "Automatic task routing" },
   { id: "tier/simple", name: "Fast", detail: "Quick and lightweight" },
   { id: "tier/medium", name: "Balanced", detail: "Coding and daily work" },
   { id: "tier/complex", name: "Complex", detail: "Large or difficult changes" },
@@ -43,11 +44,17 @@ class AutoModelProvider {
       available = false;
     }
 
-    return MODELS.map((model) => {
+    const models = [...ROUTING_MODELS, ...buildDirectModels(metadata)];
+    return models.map((model) => {
       const limits = resolveModelLimits(model.id, metadata);
       const context = formatTokens(limits.contextLength);
-      const modelDetail = limits.modelName && model.id !== "auto"
-        ? `${limits.modelName} · ${context} context`
+      const expiry = limits.expirationDate
+        ? ` · until ${limits.expirationDate}`
+        : "";
+      const modelDetail = model.direct
+        ? `Direct free model · ${context} context${expiry}`
+        : limits.modelName && model.id !== "automatic"
+          ? `${limits.modelName} · ${context} context`
         : `${model.detail} · ${context} safe context`;
       return {
         ...model,

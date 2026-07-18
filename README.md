@@ -41,11 +41,15 @@ auto-model-switcher configure --manual
 
 Then open VS Code Chat, choose **Manage Language Models**, and select one of:
 
-- **Auto Router** — classify every prompt locally;
+- **Automatic** — classify every prompt locally without colliding with VS Code's built-in Auto label;
 - **Fast** — short questions and small edits;
 - **Balanced** — normal coding work;
 - **Complex** — architecture and large changes;
 - **Reasoning** — deep analysis and difficult debugging.
+
+Every currently free, text, and tool-capable model also appears as a direct
+choice. This includes Tencent Hy3 while it remains in OpenRouter's free catalog.
+Direct choices bypass tier selection and fallbacks.
 
 All choices use OpenRouter models whose prompt and completion prices are both
 reported as zero when the daily refresh runs. Models without `tools` and
