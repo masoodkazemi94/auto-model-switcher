@@ -127,6 +127,7 @@ install_service() {
       cp "${INSTALL_DIR}/scripts/systemd/auto-model-switcher-update.timer" "${unit_dir}/${APP_NAME}-update.timer"
       systemctl --user daemon-reload
       systemctl --user enable --now "${APP_NAME}.service" "${APP_NAME}-update.timer"
+      systemctl --user restart "${APP_NAME}.service"
       ;;
     Darwin)
       local agent_dir="${HOME}/Library/LaunchAgents" log_dir="${HOME}/Library/Logs/${APP_NAME}"
@@ -188,6 +189,7 @@ doctor() {
   check test -s "${CONFIG_DIR}/freerouter.config.json"
   check test -s "${SECRETS_FILE}"
   check curl -fsS "${ENDPOINT}/health"
+  check curl -fsS "${ENDPOINT}/upstream-health"
   if command -v code >/dev/null 2>&1; then
     check bash -c "code --list-extensions | grep -qx 'auto-model-switcher.auto-model-switcher'"
   fi

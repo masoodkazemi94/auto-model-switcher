@@ -100,6 +100,8 @@ child.stderr.on("data", (chunk) => childOutput.push(chunk.toString()));
 try {
   const endpoint = `http://127.0.0.1:${routerPort}`;
   await waitForHealth(endpoint, child, childOutput);
+  const upstreamHealth = await fetch(`${endpoint}/upstream-health`);
+  assert.equal(upstreamHealth.status, 200, await upstreamHealth.text());
   const response = await fetch(`${endpoint}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

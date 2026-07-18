@@ -7,6 +7,10 @@ CONFIG_DIR="$2"
 set -a
 # shellcheck disable=SC1090
 source "${CONFIG_DIR}/secrets.env"
+if [[ -f "${CONFIG_DIR}/network.env" ]]; then
+  # shellcheck disable=SC1090
+  source "${CONFIG_DIR}/network.env"
+fi
 set +a
 
 export FREEROUTER_CONFIG="${CONFIG_DIR}/freerouter.config.json"

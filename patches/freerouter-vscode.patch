@@ -2,6 +2,26 @@ diff --git a/src/provider.ts b/src/provider.ts
 index f783a43..3675f77 100644
 --- a/src/provider.ts
 +++ b/src/provider.ts
+@@ -5,8 +5,18 @@
+-
++
+ import { getAuth } from "./auth.js";
+ import { getConfig, toInternalApiType, supportsAdaptiveThinking as configSupportsAdaptive, getThinkingBudget } from "./config.js";
+ import { logger } from "./logger.js";
+ import type { IncomingMessage, ServerResponse } from "node:http";
++import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
++
++const fallbackProxy = process.env.all_proxy ?? process.env.ALL_PROXY;
++const httpProxy = process.env.http_proxy ?? process.env.HTTP_PROXY ?? fallbackProxy;
++const httpsProxy = process.env.https_proxy ?? process.env.HTTPS_PROXY ?? fallbackProxy;
++const noProxy = process.env.no_proxy ?? process.env.NO_PROXY;
++if (httpProxy || httpsProxy) {
++  setGlobalDispatcher(new EnvHttpProxyAgent({ httpProxy, httpsProxy, noProxy }));
++}
++
+ // --- Timeout Configuration ---
+ const TIER_TIMEOUTS: Record<string, number> = {
+   SIMPLE: 30_000,
 @@ -547,6 +547,9 @@ async function forwardToOpenAI(
    if (req.max_tokens) body.max_tokens = req.max_tokens;
    if (req.temperature !== undefined) body.temperature = req.temperature;
@@ -64,3 +84,30 @@ index d65312a..7de2ca3 100644
      {
        id: "anthropic/claude-opus-4-6",
        object: "model",
+@@ -344,6 +376,16 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
+   }));
+ }
+-
++
++async function handleUpstreamHealth(_req: IncomingMessage, res: ServerResponse) {
++  const response = await fetch("https://openrouter.ai/api/v1/models");
++  if (!response.ok) {
++    const details = await response.text();
++    return sendError(res, 502, `OpenRouter connectivity failed: HTTP ${response.status}: ${details}`);
++  }
++  res.writeHead(200, { "Content-Type": "application/json" });
++  res.end(JSON.stringify({ status: "ok", upstreamStatus: response.status }));
++}
++
+ /**
+  * Handle GET /stats
+  */
+@@ -414,6 +456,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+       handleListModels(req, res);
+     } else if (method === "GET" && url === "/health") {
+       handleHealth(req, res);
++    } else if (method === "GET" && url === "/upstream-health") {
++      await handleUpstreamHealth(req, res);
+     } else if (method === "GET" && url === "/stats") {
+       handleStats(req, res);
+     } else if (method === "POST" && url === "/reload") {

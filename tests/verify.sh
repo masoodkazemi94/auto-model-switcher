@@ -15,5 +15,6 @@ git -C "${tmp_dir}/freerouter" checkout --quiet --detach 641623e0315f1a62cfb4a46
 git -C "${tmp_dir}/freerouter" apply --check "${ROOT}/patches/freerouter-vscode.patch"
 git -C "${tmp_dir}/freerouter" apply "${ROOT}/patches/freerouter-vscode.patch"
 npm --prefix "${tmp_dir}/freerouter" install --ignore-scripts
+npm --prefix "${tmp_dir}/freerouter" install --ignore-scripts --save-exact undici@7.28.0
 npm --prefix "${tmp_dir}/freerouter" run build
 node "${ROOT}/tests/freerouter-integration.mjs" "${tmp_dir}/freerouter/dist/server.js"

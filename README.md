@@ -11,6 +11,7 @@ One installer:
 - discovers zero-price models with tool-calling support;
 - ranks models into fast, balanced, complex, and reasoning tiers;
 - runs the router through systemd on Linux or launchd on macOS;
+- preserves `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` for the background service;
 - refreshes the free-model set daily;
 - installs a VS Code Language Model Chat Provider with Agent-mode tools.
 
@@ -76,6 +77,16 @@ model.
 
 FreeRouter listens only on `127.0.0.1:18800`. VS Code talks to this local
 endpoint. Requests then go to OpenRouter using the locally stored key.
+
+### OpenRouter returns HTTP 403
+
+If `curl` works but chat reports `Access denied by security policy`, the direct
+route is blocked and the background Node process is missing your shell proxy.
+Rerun `./install.sh` from a terminal where `HTTP_PROXY`, `HTTPS_PROXY`, and
+`NO_PROXY` are configured. The installer stores them in
+`~/.config/auto-model-switcher/network.env` with mode `600` and restarts the
+service. `auto-model-switcher doctor` verifies both the local router and its
+outbound OpenRouter connection.
 
 ## Free does not mean unlimited
 

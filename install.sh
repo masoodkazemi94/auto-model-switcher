@@ -92,6 +92,27 @@ copy_application() {
   ln -sfn "${INSTALL_DIR}/bin/auto-model-switcher" "${BIN_DIR}/auto-model-switcher"
 }
 
+capture_network_environment() {
+  local destination="${CONFIG_DIR}/network.env"
+  local temporary="${destination}.tmp-$$"
+  local name value found=0
+  umask 077
+  : > "${temporary}"
+  for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
+    value="${!name:-}"
+    if [[ -n "${value}" ]]; then
+      printf '%s=%q\n' "${name}" "${value}" >> "${temporary}"
+      found=1
+    fi
+  done
+  if [[ "${found}" -eq 1 || ! -e "${destination}" ]]; then
+    mv "${temporary}" "${destination}"
+    chmod 600 "${destination}"
+  else
+    rm -f -- "${temporary}"
+  fi
+}
+
 install_freerouter() {
   local target="${INSTALL_DIR}/freerouter"
   local staging="${INSTALL_DIR}/freerouter.new"
@@ -104,6 +125,7 @@ install_freerouter() {
   # Upstream's lockfile is currently stale. npm install reconciles it inside the
   # managed dependency checkout; the git commit still pins all source code.
   npm --prefix "${staging}" install --ignore-scripts
+  npm --prefix "${staging}" install --ignore-scripts --save-exact undici@7.28.0
   npm --prefix "${staging}" run build --if-present
   if [[ ! -f "${staging}/dist/server.js" ]]; then
     (cd "${staging}" && npx tsc)
@@ -151,6 +173,7 @@ main() {
   command -v git >/dev/null 2>&1 || die "git is required"
   install_node_runtime
   copy_application
+  capture_network_environment
   export PATH="${RUNTIME_DIR}/node/bin:${BIN_DIR}:${PATH}"
   install_freerouter
   configure_key
