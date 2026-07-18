@@ -128,13 +128,28 @@ export function buildConfig(selected) {
   };
 }
 
+export function getModelLimits(model) {
+  const catalogContext = Number(model.context_length ?? 0);
+  const providerContext = Number(model.top_provider?.context_length ?? 0);
+  const contextLength = providerContext > 0
+    ? Math.min(catalogContext || providerContext, providerContext)
+    : catalogContext;
+  const providerOutput = Number(model.top_provider?.max_completion_tokens ?? 0);
+  const maxOutputTokens = providerOutput > 0
+    ? Math.min(providerOutput, contextLength)
+    : Math.min(16_384, contextLength);
+  return { contextLength, maxOutputTokens };
+}
+
 export function buildMetadata(selected, eligible, pins) {
   const tiers = {};
   for (const tier of TIERS) {
+    const limits = getModelLimits(selected[tier].primary);
     tiers[tier] = {
       primary: selected[tier].primary.id,
       primaryName: selected[tier].primary.name,
-      contextLength: selected[tier].primary.context_length,
+      contextLength: limits.contextLength,
+      maxOutputTokens: limits.maxOutputTokens,
       fallbacks: selected[tier].fallback.map((model) => model.id),
       pinned: pins[tier] === selected[tier].primary.id,
     };

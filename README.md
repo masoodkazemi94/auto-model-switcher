@@ -17,6 +17,7 @@ One installer:
 - preserves `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` for the background service;
 - refreshes the free-model set daily;
 - installs a VS Code Language Model Chat Provider with Agent-mode tools.
+- advertises dynamic context and output limits from each selected provider.
 
 ## Install
 

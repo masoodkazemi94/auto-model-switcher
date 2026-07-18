@@ -1,7 +1,15 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
 const vscode = require("vscode");
 const { requestChatCompletion, toOpenAIMessages } = require("./src/openai");
+const {
+  formatTokens,
+  metadataPath,
+  readModelMetadata,
+  resolveModelLimits,
+} = require("./src/model-metadata");
 
 const MODELS = [
   { id: "auto", name: "Auto Router", detail: "Automatic task routing" },
@@ -12,8 +20,21 @@ const MODELS = [
 ];
 
 class AutoModelProvider {
+  constructor() {
+    this.changeEmitter = new vscode.EventEmitter();
+    this.onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
+    try {
+      this.metadataWatcher = fs.watch(path.dirname(metadataPath()), (_event, filename) => {
+        if (!filename || filename.toString() === "models.json") this.changeEmitter.fire();
+      });
+    } catch {
+      this.metadataWatcher = null;
+    }
+  }
+
   async provideLanguageModelChatInformation() {
     const endpoint = configuredEndpoint();
+    const metadata = readModelMetadata();
     let available = false;
     try {
       const response = await fetch(`${endpoint}/health`, { signal: AbortSignal.timeout(1500) });
@@ -22,17 +43,25 @@ class AutoModelProvider {
       available = false;
     }
 
-    return MODELS.map((model) => ({
-      ...model,
-      family: "openrouter-free",
-      version: "1",
-      maxInputTokens: 120_000,
-      maxOutputTokens: 16_384,
-      tooltip: available
-        ? `${model.detail}. Routes through local FreeRouter.`
-        : "Local router is offline. Run: auto-model-switcher start",
-      capabilities: { imageInput: false, toolCalling: true },
-    }));
+    return MODELS.map((model) => {
+      const limits = resolveModelLimits(model.id, metadata);
+      const context = formatTokens(limits.contextLength);
+      const modelDetail = limits.modelName && model.id !== "auto"
+        ? `${limits.modelName} · ${context} context`
+        : `${model.detail} · ${context} safe context`;
+      return {
+        ...model,
+        detail: modelDetail,
+        family: "openrouter-free",
+        version: metadata?.updatedAt ?? "1",
+        maxInputTokens: limits.contextLength,
+        maxOutputTokens: limits.maxOutputTokens,
+        tooltip: available
+          ? `${modelDetail}. Routes through local FreeRouter.`
+          : "Local router is offline. Run: auto-model-switcher start",
+        capabilities: { imageInput: false, toolCalling: true },
+      };
+    });
   }
 
   async provideLanguageModelChatResponse(model, messages, options, progress, token) {
@@ -77,6 +106,11 @@ class AutoModelProvider {
     const messages = toOpenAIMessages([input], vscode);
     return Math.ceil(JSON.stringify(messages).length / 4);
   }
+
+  dispose() {
+    this.metadataWatcher?.close();
+    this.changeEmitter.dispose();
+  }
 }
 
 function configuredEndpoint() {
@@ -92,8 +126,10 @@ function runCli(command) {
 }
 
 function activate(context) {
+  const provider = new AutoModelProvider();
   context.subscriptions.push(
-    vscode.lm.registerLanguageModelChatProvider("auto-model-switcher", new AutoModelProvider()),
+    provider,
+    vscode.lm.registerLanguageModelChatProvider("auto-model-switcher", provider),
     vscode.commands.registerCommand("auto-model-switcher.manage", () => runCli("configure")),
     vscode.commands.registerCommand("auto-model-switcher.refreshModels", () => runCli("update-models")),
     vscode.commands.registerCommand("auto-model-switcher.status", async () => {

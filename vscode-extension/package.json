@@ -2,7 +2,7 @@
   "name": "auto-model-switcher",
   "displayName": "Auto Model Switcher",
   "description": "Use automatically ranked OpenRouter free models in VS Code Chat and Agent mode.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "auto-model-switcher",
   "license": "MIT",
   "repository": {

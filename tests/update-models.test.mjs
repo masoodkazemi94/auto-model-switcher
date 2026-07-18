@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildConfig, chooseModels, isEligible, scoreModel } from "../scripts/update-models.mjs";
+import {
+  buildConfig,
+  buildMetadata,
+  chooseModels,
+  getModelLimits,
+  isEligible,
+  scoreModel,
+} from "../scripts/update-models.mjs";
 
 function model(id, options = {}) {
   return {
@@ -11,6 +18,7 @@ function model(id, options = {}) {
     pricing: { prompt: options.promptPrice ?? "0", completion: options.outputPrice ?? "0" },
     supported_parameters: options.parameters ?? ["tools", "tool_choice", "reasoning"],
     architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+    top_provider: options.topProvider,
   };
 }
 
@@ -49,4 +57,25 @@ test("invalid pins fail closed", () => {
     () => chooseModels(models, { complex: "vendor/paid-model" }),
     /not currently free/,
   );
+});
+
+test("metadata uses current provider context and output limits", () => {
+  const limited = model("vendor/large-coder:free", {
+    context: 1_048_576,
+    topProvider: { context_length: 262_000, max_completion_tokens: 65_536 },
+  });
+  assert.deepEqual(getModelLimits(limited), {
+    contextLength: 262_000,
+    maxOutputTokens: 65_536,
+  });
+
+  const selected = chooseModels(models, { complex: "vendor/general-550b-instruct:free" });
+  selected.complex.primary.context_length = 1_000_000;
+  selected.complex.primary.top_provider = {
+    context_length: 1_000_000,
+    max_completion_tokens: 65_536,
+  };
+  const metadata = buildMetadata(selected, models, {});
+  assert.equal(metadata.tiers.complex.contextLength, 1_000_000);
+  assert.equal(metadata.tiers.complex.maxOutputTokens, 65_536);
 });

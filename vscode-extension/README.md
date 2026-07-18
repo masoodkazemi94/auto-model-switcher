@@ -83,6 +83,14 @@ The names in the picker represent routing tiers, not permanent remote models.
 OpenRouter changes its free catalog. The updater ranks the current catalog and
 can change the model behind a tier without requiring an extension update.
 
+Context and output limits are dynamic. Each explicit tier advertises the active
+provider limits of its selected primary model. For example, a Nemotron tier can
+advertise a 1M-token context when its active provider reports that limit. Auto
+Router advertises the smallest context across its active tiers because it does
+not choose the final tier until after receiving the prompt. Model picker details
+show the current model name and context size, and update automatically when the
+daily model refresh changes them.
+
 Only models currently reporting zero prompt and completion prices, text input,
 and `tools` plus `tool_choice` support are eligible. Each tier also has free
 fallback models for rate limits or temporary provider failures.
