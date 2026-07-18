@@ -3,6 +3,9 @@
 Cursor-like model choice inside VS Code, using current free OpenRouter models
 and a local [FreeRouter](https://github.com/openfreerouter/freerouter) classifier.
 
+See the [VS Code extension guide](vscode-extension/README.md) for its model
+picker, Agent-mode, privacy, settings, and troubleshooting behavior.
+
 One installer:
 
 - installs a private Node.js runtime when Node 20+ is unavailable;

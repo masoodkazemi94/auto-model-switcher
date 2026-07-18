@@ -85,7 +85,7 @@ copy_application() {
   done
   rm -rf -- "${INSTALL_DIR}/vscode-extension"
   mkdir -p "${INSTALL_DIR}/vscode-extension"
-  for path in extension.js package.json package-lock.json LICENSE .vscodeignore src; do
+  for path in extension.js package.json package-lock.json README.md LICENSE .vscodeignore src; do
     cp -R "${SOURCE_DIR}/vscode-extension/${path}" "${INSTALL_DIR}/vscode-extension/${path}"
   done
   chmod +x "${INSTALL_DIR}/bin/auto-model-switcher"
