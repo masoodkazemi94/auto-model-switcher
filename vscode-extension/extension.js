@@ -1,16 +1,14 @@
 "use strict";
 
-const fs = require("node:fs");
-const path = require("node:path");
 const vscode = require("vscode");
-const { requestChatCompletion, toOpenAIMessages } = require("./src/openai");
-const {
-  buildDirectModels,
-  formatTokens,
-  metadataPath,
-  readModelMetadata,
-  resolveModelLimits,
-} = require("./src/model-metadata");
+const { toOpenAIMessages } = require("./src/openai");
+const metadata = require("./src/metadata");
+const router = require("./src/router-client");
+const config = require("./src/config");
+const { StatusBar } = require("./src/statusbar");
+const commands = require("./src/commands");
+const { filterAndSortDirectModels, isFavorite } = require("./src/models");
+const { log, debug, warn, error: logError, show } = require("./src/logging");
 
 const ROUTING_MODELS = [
   { id: "automatic", name: "Automatic", detail: "Automatic task routing" },
@@ -21,52 +19,72 @@ const ROUTING_MODELS = [
 ];
 
 class AutoModelProvider {
-  constructor() {
+  constructor(statusBar) {
+    this.statusBar = statusBar;
     this.changeEmitter = new vscode.EventEmitter();
     this.onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
+    this._wireWatcher();
+  }
+
+  _wireWatcher() {
+    this.metadataWatcher = null;
+    if (!config.getAutoRefresh()) return;
     try {
-      this.metadataWatcher = fs.watch(path.dirname(metadataPath()), (_event, filename) => {
-        if (!filename || filename.toString() === "models.json") this.changeEmitter.fire();
+      const dir = require("node:path").dirname(metadata.metadataPath());
+      let debounce;
+      this.metadataWatcher = require("node:fs").watch(dir, (_event, filename) => {
+        if (!filename || filename.toString() === "models.json") {
+          clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            metadata.invalidateCache();
+            this.changeEmitter.fire();
+            debug("Metadata change detected; model list refreshed.");
+          }, 300);
+        }
       });
-    } catch {
+    } catch (error) {
+      warn(`Metadata watcher could not be started: ${error.message}`);
       this.metadataWatcher = null;
     }
   }
 
   async provideLanguageModelChatInformation() {
-    const endpoint = configuredEndpoint();
-    const metadata = readModelMetadata();
-    let available = false;
-    try {
-      const response = await fetch(`${endpoint}/health`, { signal: AbortSignal.timeout(1500) });
-      available = response.ok;
-    } catch {
-      available = false;
-    }
+    const metadataObject = metadata.readModelMetadata();
+    const showTiers = config.getShowTiers();
+    const showDirect = config.getShowDirectModels();
 
-    const models = [...ROUTING_MODELS, ...buildDirectModels(metadata)];
+    const tiers = showTiers ? ROUTING_MODELS : [];
+    const direct = showDirect
+      ? filterAndSortDirectModels(metadata.buildDirectModels(metadataObject))
+      : [];
+
+    const models = [...tiers, ...direct];
+    const health = await router.checkHealth();
+
     return models.map((model) => {
-      const limits = resolveModelLimits(model.id, metadata);
-      const context = formatTokens(limits.contextLength);
+      const limits = metadata.resolveModelLimits(model.id, metadataObject);
+      const context = metadata.formatTokens(limits.contextLength);
       const expiry = limits.expirationDate
         ? ` · until ${limits.expirationDate}`
         : "";
+      const favoriteMark = model.direct && isFavorite(model.id) ? "$(star) " : "";
       const modelDetail = model.direct
         ? `Direct free model · ${context} context${expiry}`
         : limits.modelName && model.id !== "automatic"
           ? `${limits.modelName} · ${context} context`
-        : `${model.detail} · ${context} safe context`;
+          : `${model.detail} · ${context} safe context`;
       return {
         ...model,
+        name: `${favoriteMark}${model.name}`,
         detail: modelDetail,
         family: "openrouter-free",
-        version: metadata?.updatedAt ?? "1",
+        version: metadataObject?.updatedAt ?? "1",
         maxInputTokens: limits.contextLength,
         maxOutputTokens: limits.maxOutputTokens,
-        tooltip: available
+        tooltip: health.online
           ? `${modelDetail}. Routes through local FreeRouter.`
           : "Local router is offline. Run: auto-model-switcher start",
-        capabilities: { imageInput: false, toolCalling: true },
+        capabilities: { imageInput: limits.imageInput, toolCalling: limits.toolCalling },
       };
     });
   }
@@ -74,6 +92,7 @@ class AutoModelProvider {
   async provideLanguageModelChatResponse(model, messages, options, progress, token) {
     const abortController = new AbortController();
     const cancellation = token.onCancellationRequested(() => abortController.abort());
+    this.statusBar?.markBusy();
     try {
       const openAIMessages = toOpenAIMessages(messages, vscode);
       const tools = options.tools?.map((tool) => ({
@@ -88,8 +107,8 @@ class AutoModelProvider {
         ? "required"
         : "auto";
 
-      await requestChatCompletion({
-        endpoint: configuredEndpoint(),
+      await router.requestChatCompletion({
+        endpoint: config.getEndpoint(),
         model: model.id,
         messages: openAIMessages,
         tools,
@@ -100,11 +119,18 @@ class AutoModelProvider {
           new vscode.LanguageModelToolCallPart(call.id, call.name, call.input),
         ),
       });
-    } catch (error) {
-      if (abortController.signal.aborted) return;
-      throw new Error(`Auto Model Switcher: ${error.message}`, { cause: error });
+    } catch (err) {
+      if (abortController.signal.aborted || err?.name === "AbortError") return;
+      const layer = err?.layer ?? "vscode-extension";
+      const message = `Auto Model Switcher (${layer}): ${err.message}`;
+      logError(message);
+      if (config.notificationWants("errors")) {
+        vscode.window.showErrorMessage(message);
+      }
+      throw new Error(message, { cause: err });
     } finally {
       cancellation.dispose();
+      this.statusBar?.markIdle();
     }
   }
 
@@ -120,42 +146,49 @@ class AutoModelProvider {
   }
 }
 
-function configuredEndpoint() {
-  return vscode.workspace.getConfiguration("autoModelSwitcher")
-    .get("endpoint", "http://127.0.0.1:18800")
-    .replace(/\/$/, "");
-}
-
-function runCli(command) {
-  const terminal = vscode.window.createTerminal({ name: "Auto Model Switcher" });
-  terminal.show();
-  terminal.sendText(`auto-model-switcher ${command}`);
+function registerCommands(context) {
+  const reg = (id, fn) => vscode.commands.registerCommand(id, fn);
+  context.subscriptions.push(
+    reg("auto-model-switcher.manage", commands.configure),
+    reg("auto-model-switcher.status", commands.showStatus),
+    reg("auto-model-switcher.showStatus", commands.showStatus),
+    reg("auto-model-switcher.refreshModels", commands.refreshModels),
+    reg("auto-model-switcher.doctor", commands.showDoctor),
+    reg("auto-model-switcher.startRouter", commands.startRouter),
+    reg("auto-model-switcher.stopRouter", commands.stopRouter),
+    reg("auto-model-switcher.restartRouter", commands.restartRouter),
+    reg("auto-model-switcher.openLogs", commands.openLogs),
+    reg("auto-model-switcher.openSettings", commands.openSettings),
+    reg("auto-model-switcher.manageFavorites", commands.manageFavorites),
+    reg("auto-model-switcher.browseModels", commands.browseModels),
+    reg("auto-model-switcher.copyDiagnostics", commands.copyDiagnostics),
+  );
 }
 
 function activate(context) {
-  const provider = new AutoModelProvider();
+  const statusBar = new StatusBar();
+  context.subscriptions.push(statusBar);
+  if (config.getDebugLogging()) show();
+
+  const provider = new AutoModelProvider(statusBar);
   context.subscriptions.push(
     provider,
     vscode.lm.registerLanguageModelChatProvider("auto-model-switcher", provider),
-    vscode.commands.registerCommand("auto-model-switcher.manage", () => runCli("configure")),
-    vscode.commands.registerCommand("auto-model-switcher.refreshModels", () => runCli("update-models")),
-    vscode.commands.registerCommand("auto-model-switcher.status", async () => {
-      try {
-        const response = await fetch(`${configuredEndpoint()}/health`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const health = await response.json();
-        vscode.window.showInformationMessage(
-          `Auto Model Switcher online — ${health.stats?.requests ?? 0} requests`,
-        );
-      } catch (error) {
-        const action = await vscode.window.showErrorMessage(
-          `Auto Model Switcher offline: ${error.message}`,
-          "Start",
-        );
-        if (action === "Start") runCli("start");
+  );
+  registerCommands(context);
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("autoModelSwitcher")) {
+        debug("Configuration changed; refreshing status and model list.");
+        statusBar.refresh().catch((e) => debug(`refresh failed: ${e.message}`));
+        provider.changeEmitter.fire();
       }
     }),
   );
+
+  statusBar.refresh().catch((e) => debug(`initial refresh failed: ${e.message}`));
+  log("Auto Model Switcher extension activated.");
 }
 
 function deactivate() {}

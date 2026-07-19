@@ -75,6 +75,14 @@ Pins are validated on every refresh. A pinned model that stops being free or
 loses tool support causes the refresh to fail instead of silently using a paid
 model.
 
+The VS Code extension adds its own Command Palette entries (all prefixed
+**Auto Model Switcher**): Show Status, Refresh Free Models, Run Doctor, Start /
+Stop / Restart Router, Open Router Logs, Open Settings, Manage Favorite Models,
+Browse Models, and Copy Sanitized Diagnostics. It also adds a status-bar item
+showing router online/offline and active-request state. See
+[vscode-extension/README.md](vscode-extension/README.md) for every setting and
+troubleshooting path.
+
 ## Layout after installation
 
 ```text

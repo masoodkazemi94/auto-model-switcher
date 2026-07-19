@@ -2,7 +2,7 @@
   "name": "auto-model-switcher",
   "displayName": "Auto Model Switcher",
   "description": "Use automatically ranked OpenRouter free models in VS Code Chat and Agent mode.",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "publisher": "auto-model-switcher",
   "license": "MIT",
   "repository": {
@@ -49,8 +49,48 @@
         "title": "Auto Model Switcher: Show Status"
       },
       {
+        "command": "auto-model-switcher.showStatus",
+        "title": "Auto Model Switcher: Show Status Bar Info"
+      },
+      {
         "command": "auto-model-switcher.refreshModels",
         "title": "Auto Model Switcher: Refresh Free Models"
+      },
+      {
+        "command": "auto-model-switcher.doctor",
+        "title": "Auto Model Switcher: Run Doctor"
+      },
+      {
+        "command": "auto-model-switcher.startRouter",
+        "title": "Auto Model Switcher: Start Router"
+      },
+      {
+        "command": "auto-model-switcher.stopRouter",
+        "title": "Auto Model Switcher: Stop Router"
+      },
+      {
+        "command": "auto-model-switcher.restartRouter",
+        "title": "Auto Model Switcher: Restart Router"
+      },
+      {
+        "command": "auto-model-switcher.openLogs",
+        "title": "Auto Model Switcher: Open Router Logs"
+      },
+      {
+        "command": "auto-model-switcher.openSettings",
+        "title": "Auto Model Switcher: Open Settings"
+      },
+      {
+        "command": "auto-model-switcher.manageFavorites",
+        "title": "Auto Model Switcher: Manage Favorite Models"
+      },
+      {
+        "command": "auto-model-switcher.browseModels",
+        "title": "Auto Model Switcher: Browse Models"
+      },
+      {
+        "command": "auto-model-switcher.copyDiagnostics",
+        "title": "Auto Model Switcher: Copy Sanitized Diagnostics"
       }
     ],
     "configuration": {
@@ -59,13 +99,106 @@
         "autoModelSwitcher.endpoint": {
           "type": "string",
           "default": "http://127.0.0.1:18800",
-          "description": "Local FreeRouter endpoint."
+          "description": "Local FreeRouter base URL. Must be http(s) and must not contain credentials.",
+          "pattern": "^https?://[^\\s:@/]+(:[0-9]+)?(/.*)?$"
+        },
+        "autoModelSwitcher.connectionTimeoutMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "description": "Timeout in milliseconds for connecting to the local router health endpoint."
+        },
+        "autoModelSwitcher.requestTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "description": "Timeout in milliseconds for a chat completion request to the local router."
+        },
+        "autoModelSwitcher.healthCheckTimeoutMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "description": "Timeout in milliseconds for the router health check used by the status bar."
+        },
+        "autoModelSwitcher.showTiers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Automatic, Fast, Balanced, Complex, and Reasoning routing tiers."
+        },
+        "autoModelSwitcher.showDirectModels": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show individual eligible free models as direct choices."
+        },
+        "autoModelSwitcher.favoriteModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "OpenRouter model IDs (e.g. 'tencent/hy3:free') shown first in the model picker."
+        },
+        "autoModelSwitcher.includeModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "If non-empty, only these model IDs appear as direct choices."
+        },
+        "autoModelSwitcher.excludeModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Model IDs to hide from direct choices."
+        },
+        "autoModelSwitcher.includeProviders": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "If non-empty, only these providers (e.g. 'google') appear as direct choices."
+        },
+        "autoModelSwitcher.excludeProviders": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Providers to hide from direct choices."
+        },
+        "autoModelSwitcher.directSort": {
+          "type": "string",
+          "enum": ["recommended", "name", "provider", "context", "output", "expiration"],
+          "default": "recommended",
+          "description": "How direct models are sorted in the picker (favorites always first)."
+        },
+        "autoModelSwitcher.minimumContextWindow": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Hide direct models with a context window smaller than this many tokens."
+        },
+        "autoModelSwitcher.hideExpiringWithinDays": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Hide direct models expiring within this many days (0 disables)."
+        },
+        "autoModelSwitcher.notificationLevel": {
+          "type": "string",
+          "enum": ["off", "errors", "warnings", "info"],
+          "default": "errors",
+          "description": "How verbose user-facing notifications should be."
+        },
+        "autoModelSwitcher.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Write detailed diagnostic logs to the Output channel."
+        },
+        "autoModelSwitcher.autoRefreshMetadata": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch the generated metadata file and refresh the model list when it changes."
         }
       }
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --require ./test/vscode-shim.js --test test/*.test.js",
     "package": "vsce package --no-dependencies --out auto-model-switcher.vsix"
   },
   "devDependencies": {
