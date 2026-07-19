@@ -6,6 +6,11 @@ follows a simple date-based log; releases are tagged from `main`.
 ## Unreleased — VS Code extension overhaul
 
 ### Added
+- Modern terminal installer with capability detection, numbered stages,
+  spinners, elapsed times, secure logs, sanitized failure diagnostics, and a
+  final installation summary.
+- Plain, `NO_COLOR`, verbose, redirected-output, and CI-safe presentation
+  modes with isolated installer behavior tests.
 - Rich, validated VS Code settings: local router endpoint, connection/request/
   health-check timeouts, show/hide tiers and direct models, favorite models,
   include/exclude model IDs and providers, direct-model sorting, minimum
@@ -41,6 +46,8 @@ follows a simple date-based log; releases are tagged from `main`.
 ### Security
 - Extension never reads or stores the OpenRouter key; no telemetry; URLs are
   validated; logs and copied diagnostics are sanitized.
+- Installer logs use mode `600`; test authorization cannot target the
+  production configuration; sourcing `install.sh` never executes installation.
 
 ## 0.1.3
 - Expose direct free OpenRouter models in the VS Code model picker.

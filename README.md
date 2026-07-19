@@ -30,6 +30,43 @@ cd auto-model-switcher
 ./install.sh
 ```
 
+The installer detects terminal capabilities automatically. Interactive
+terminals get a compact logo, numbered stages, spinners, elapsed times, and a
+final configuration summary. Redirected output, CI, `TERM=dumb`, and explicit
+plain mode use stable text with no animation. `NO_COLOR` removes color while
+retaining useful interactive progress.
+
+```text
+01/09 System check
+02/09 Runtime installation
+03/09 Application files
+...
+09/09 Health verification
+
+  INSTALLATION COMPLETE
+  Extension version : 0.2.1
+  Router URL         : http://127.0.0.1:18800
+  Service status     : running (systemd)
+```
+
+Presentation controls:
+
+```bash
+AUTO_MODEL_SWITCHER_PLAIN=1 ./install.sh    # ASCII, no color or animation
+AUTO_MODEL_SWITCHER_VERBOSE=1 ./install.sh  # stream sanitized command output
+NO_COLOR=1 ./install.sh                     # standard NO_COLOR behavior
+```
+
+For non-interactive environments, provide an existing valid credential in the
+isolated configuration directory. Development tests may use
+`AUTO_MODEL_SWITCHER_SKIP_AUTH=1` only together with an explicit `CONFIG_DIR`;
+the installer refuses to write a test key into the production configuration.
+
+Complete sanitized installation output is stored with mode `600` at
+`~/.config/auto-model-switcher/logs/install.log`. If a stage fails, the
+installer reports the stage, exit code, recent sanitized output, log path, and
+rerun command.
+
 The browser authorization uses OpenRouter's documented localhost OAuth PKCE
 flow. The returned API key is stored in
 `~/.config/auto-model-switcher/secrets.env` with mode `600`; it is never written
@@ -90,6 +127,7 @@ troubleshooting path.
 ```text
 ~/.local/share/auto-model-switcher/    application, Node runtime, FreeRouter
 ~/.config/auto-model-switcher/         key, generated model config, pins
+~/.config/auto-model-switcher/logs/    private installer log
 ~/.local/bin/auto-model-switcher       CLI symlink
 ```
 

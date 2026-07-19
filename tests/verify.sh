@@ -5,6 +5,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 bash -n "${ROOT}/install.sh" "${ROOT}/bin/auto-model-switcher" \
   "${ROOT}/scripts/run-freerouter.sh"
+"${ROOT}/tests/installer.test.sh"
 node --test "${ROOT}/tests/update-models.test.mjs"
 node --test "${ROOT}/vscode-extension/test/openai.test.js"
 
