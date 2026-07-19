@@ -11,6 +11,10 @@ test("HTTP error classification tags the failing layer and is actionable", () =>
   assert.match(classifyHttp(401, "local-router").message, /Configure/);
   assert.match(classifyHttp(403, "local-router").message, /security policy/);
   assert.match(classifyHttp(429, "local-router").message, /Rate limited/);
+  assert.match(
+    classifyHttp(429, "local-router", "free-models-per-day").message,
+    /daily free-request quota is exhausted/,
+  );
   assert.match(classifyHttp(502, "openrouter").message, /Upstream/);
   assert.match(classifyHttp(503, "openrouter").message, /unavailable/);
   assert.match(classifyHttp(500, "openrouter").message, /internal error/);

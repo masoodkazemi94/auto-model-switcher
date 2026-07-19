@@ -10,7 +10,7 @@ SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
 INSTALL_DIR="${DATA_HOME}/${APP_NAME}"
-CONFIG_DIR="${CONFIG_HOME}/${APP_NAME}"
+CONFIG_DIR="${CONFIG_DIR:-${CONFIG_HOME}/${APP_NAME}}"
 BIN_DIR="${HOME}/.local/bin"
 RUNTIME_DIR="${INSTALL_DIR}/runtime"
 
@@ -138,6 +138,9 @@ install_freerouter() {
 configure_key() {
   local secrets="${CONFIG_DIR}/secrets.env"
   if [[ "${AUTO_MODEL_SWITCHER_SKIP_AUTH:-0}" == "1" ]]; then
+    local production_config="${CONFIG_HOME}/${APP_NAME}"
+    [[ "${CONFIG_DIR}" != "${production_config}" ]] ||
+      die "AUTO_MODEL_SWITCHER_SKIP_AUTH requires an isolated CONFIG_DIR"
     umask 077
     printf "OPENROUTER_API_KEY='installer-test-key'\n" > "${secrets}"
     return
@@ -192,4 +195,6 @@ main() {
   log "Open VS Code Chat and select 'Auto Model Switcher'."
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -180,6 +180,15 @@ logs() {
 
 doctor() {
   local failures=0
+  valid_openrouter_key() {
+    local OPENROUTER_API_KEY=""
+    # shellcheck disable=SC1090
+    source "${SECRETS_FILE}" || return 1
+    [[ "${OPENROUTER_API_KEY}" == sk-or-* ]] || return 1
+    curl -fsS --connect-timeout 15 --max-time 30 \
+      -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+      https://openrouter.ai/api/v1/key >/dev/null
+  }
   check() {
     if "$@" >/dev/null 2>&1; then printf 'ok   %s\n' "$*"; else printf 'fail %s\n' "$*"; failures=$((failures + 1)); fi
   }
@@ -188,6 +197,7 @@ doctor() {
   check test -f "${FREEROUTER_DIR}/dist/server.js"
   check test -s "${CONFIG_DIR}/freerouter.config.json"
   check test -s "${SECRETS_FILE}"
+  check valid_openrouter_key
   check curl -fsS "${ENDPOINT}/health"
   check curl -fsS "${ENDPOINT}/upstream-health"
   if command -v code >/dev/null 2>&1; then

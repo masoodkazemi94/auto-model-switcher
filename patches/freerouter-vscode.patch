@@ -36,7 +36,7 @@ index b63a247..90548d5 100644
 \ No newline at end of file
 +}
 diff --git a/src/server.ts b/src/server.ts
-index c1ee108..5b22341 100644
+index c1ee108..7b1e0c1 100644
 --- a/src/server.ts
 +++ b/src/server.ts
 @@ -202,4 +202,6 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
@@ -88,7 +88,11 @@ index c1ee108..5b22341 100644
 +  } else {
 +    modelsToTry.push(...explicitFallbackModels);
    }
-@@ -262,6 +295,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+@@ -259,2 +292,3 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+   let lastError: string = "";
++  let lastStatus = 502;
+   for (const modelToTry of modelsToTry) {
+@@ -262,6 +296,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
        if (modelToTry !== routedModel) {
 -        logger.info(`[${stats.requests}] Falling back to ${modelToTry}`);
 +        logger.info(`[${stats.requests}] Falling back to ${modelToTry} (tier=${explicitFallbackTier ?? tier})`);
@@ -101,7 +105,24 @@ index c1ee108..5b22341 100644
 +        : (explicitFallbackTier ?? tier);
 +      await forwardRequest(chatReq, modelToTry, attemptTier, res, stream);
        return; // success
-@@ -302,2 +339,32 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
+@@ -269,2 +307,4 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+       lastError = err instanceof Error ? err.message : String(err);
++      const statusMatch = lastError.match(/ API error (\d{3}):/);
++      lastStatus = statusMatch ? Number(statusMatch[1]) : 502;
+       const isTimeout = err instanceof TimeoutError;
+@@ -277,2 +317,5 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+       if (res.headersSent) break; // can't retry if already streaming
++      // Authentication and account-wide daily limits affect every model.
++      // Retrying the whole fallback list only adds delay and hides the cause.
++      if (lastStatus === 401 || (lastStatus === 429 && lastError.includes("free-models-per-day"))) break;
+     }
+@@ -282,3 +325,4 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+   if (!res.headersSent) {
+-    sendError(res, 502, `Backend error: ${lastError}`, "upstream_error");
++    const responseStatus = lastStatus === 401 || lastStatus === 429 ? lastStatus : 502;
++    sendError(res, responseStatus, `Backend error: ${lastError}`, "upstream_error");
+   } else if (!res.writableEnded) {
+@@ -302,2 +346,32 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
      },
 +    {
 +      id: "automatic",
@@ -134,7 +155,7 @@ index c1ee108..5b22341 100644
 +      owned_by: "auto-model-switcher",
 +    },
      {
-@@ -345,2 +412,12 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
+@@ -345,2 +419,12 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
 -
 +
 +async function handleUpstreamHealth(_req: IncomingMessage, res: ServerResponse) {
@@ -148,7 +169,7 @@ index c1ee108..5b22341 100644
 +}
 +
  /**
-@@ -416,2 +493,4 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+@@ -416,2 +500,4 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
        handleHealth(req, res);
 +    } else if (method === "GET" && url === "/upstream-health") {
 +      await handleUpstreamHealth(req, res);

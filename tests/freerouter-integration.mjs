@@ -52,6 +52,13 @@ const upstream = createServer(async (request, response) => {
     response.end(JSON.stringify({ error: { message: "free endpoint saturated" } }));
     return;
   }
+  if (receivedBody.model === "vendor/account-limited:free") {
+    response.writeHead(429, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({
+      error: { message: "Rate limit exceeded: free-models-per-day" },
+    }));
+    return;
+  }
   response.writeHead(200, { "Content-Type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({
     choices: [{
@@ -162,6 +169,20 @@ try {
     "vendor/failing-model:free",
     "vendor/code-model:free",
   ]);
+
+  const requestsBeforeLimit = receivedModels.length;
+  const limitedResponse = await fetch(`${endpoint}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "openrouter/vendor/account-limited:free",
+      messages: [{ role: "user", content: "Hello" }],
+      stream: true,
+    }),
+  });
+  assert.equal(limitedResponse.status, 429);
+  assert.match(await limitedResponse.text(), /free-models-per-day/);
+  assert.deepEqual(receivedModels.slice(requestsBeforeLimit), ["vendor/account-limited:free"]);
   console.log("FreeRouter routing, tools, and direct-model fallback integration passed");
 } finally {
   child.kill("SIGTERM");

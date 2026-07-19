@@ -38,6 +38,12 @@ function classifyHttp(status, layer, detailText) {
         { layer, status },
       );
     case 429:
+      if (safeDetail.includes("free-models-per-day")) {
+        return new RouterError(
+          "OpenRouter daily free-request quota is exhausted. Wait for the daily reset or add 10 credits to raise the free-model allowance.",
+          { layer, status },
+        );
+      }
       return new RouterError(
         "Rate limited by OpenRouter. Free models have tight limits; retry shortly.",
         { layer, status },

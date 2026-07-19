@@ -252,8 +252,11 @@ The installer preserves these variables (mode `600`) for the service.
 
 ### 429 — Rate limiting
 
-Free models have tight provider/account limits. Wait for the limit to reset or
-refresh the catalog:
+Free models have both provider-level limits and an account-wide daily quota.
+Provider-level limits use model fallbacks. When `free-models-per-day` is
+exhausted, every free model is blocked until the daily reset; retrying cannot
+bypass it. Wait for the reset or add 10 credits to the OpenRouter account to
+raise its documented free-model allowance. You can still refresh the catalog:
 
 ```bash
 auto-model-switcher update-models
