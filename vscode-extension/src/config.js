@@ -73,7 +73,7 @@ function getConnectionTimeoutMs() {
 }
 
 function getRequestTimeoutMs() {
-  return Math.max(1000, getNumber("requestTimeoutMs", 120_000));
+  return Math.max(1000, getNumber("requestTimeoutMs", 180_000));
 }
 
 function getHealthCheckTimeoutMs() {

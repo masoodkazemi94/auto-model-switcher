@@ -41,10 +41,17 @@ async function waitForHealth(url, child, output) {
 }
 
 let receivedBody;
+const receivedModels = [];
 const upstream = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   receivedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  receivedModels.push(receivedBody.model);
+  if (receivedBody.model === "vendor/failing-model:free") {
+    response.writeHead(503, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error: { message: "free endpoint saturated" } }));
+    return;
+  }
   response.writeHead(200, { "Content-Type": "text/event-stream" });
   response.write(`data: ${JSON.stringify({
     choices: [{
@@ -136,7 +143,26 @@ try {
   assert.equal(receivedBody.model, "vendor/code-model:free");
   assert.equal(receivedBody.tools[0].function.name, "read_file");
   assert.equal(receivedBody.tool_choice, "auto");
-  console.log("FreeRouter tier and tool-forwarding integration passed");
+
+  const directResponse = await fetch(`${endpoint}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "openrouter/vendor/failing-model:free",
+      messages: [{ role: "user", content: "Hello" }],
+      stream: true,
+    }),
+  });
+  const directBody = await directResponse.text();
+  assert.equal(directResponse.status, 200, directBody);
+  assert.equal(directResponse.headers.get("x-clawrouter-model"), "openrouter/vendor/code-model:free");
+  assert.notEqual(directResponse.headers.get("x-clawrouter-tier"), "EXPLICIT");
+  assert.match(directBody, /read_file/);
+  assert.deepEqual(receivedModels.slice(-2), [
+    "vendor/failing-model:free",
+    "vendor/code-model:free",
+  ]);
+  console.log("FreeRouter routing, tools, and direct-model fallback integration passed");
 } finally {
   child.kill("SIGTERM");
   await close(upstream);

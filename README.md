@@ -49,7 +49,9 @@ Then open VS Code Chat, choose **Manage Language Models**, and select one of:
 
 Every currently free, text, and tool-capable model also appears as a direct
 choice. This includes Tencent Hy3 while it remains in OpenRouter's free catalog.
-Direct choices bypass tier selection and fallbacks.
+A direct choice tries that model first. If OpenRouter returns a rate-limit or
+upstream error, or the model does not respond within 45 seconds, the router
+classifies the prompt and continues through the matching free tier fallbacks.
 
 All choices use OpenRouter models whose prompt and completion prices are both
 reported as zero when the daily refresh runs. Models without `tools` and
@@ -103,6 +105,13 @@ Rerun `./install.sh` from a terminal where `HTTP_PROXY`, `HTTPS_PROXY`, and
 `~/.config/auto-model-switcher/network.env` with mode `600` and restarts the
 service. `auto-model-switcher doctor` verifies both the local router and its
 outbound OpenRouter connection.
+
+### A direct free model times out
+
+Free endpoints can be saturated even when the model remains listed. Direct
+requests fail over after 45 seconds to the normal Automatic tier and its free
+fallbacks. The router never changes to a paid model. Inspect the selected
+fallback with `auto-model-switcher logs`.
 
 ## Free does not mean unlimited
 

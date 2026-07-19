@@ -1,13 +1,8 @@
 diff --git a/src/provider.ts b/src/provider.ts
-index f783a43..3675f77 100644
+index b63a247..90548d5 100644
 --- a/src/provider.ts
 +++ b/src/provider.ts
-@@ -5,8 +5,18 @@
--
-+
- import { getAuth } from "./auth.js";
- import { getConfig, toInternalApiType, supportsAdaptiveThinking as configSupportsAdaptive, getThinkingBudget } from "./config.js";
- import { logger } from "./logger.js";
+@@ -10,2 +10,12 @@ import { logger } from "./logger.js";
  import type { IncomingMessage, ServerResponse } from "node:http";
 +import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 +
@@ -20,11 +15,14 @@ index f783a43..3675f77 100644
 +}
 +
  // --- Timeout Configuration ---
- const TIER_TIMEOUTS: Record<string, number> = {
-   SIMPLE: 30_000,
-@@ -547,6 +547,9 @@ async function forwardToOpenAI(
-   if (req.max_tokens) body.max_tokens = req.max_tokens;
-   if (req.temperature !== undefined) body.temperature = req.temperature;
+@@ -16,3 +26,5 @@ const TIER_TIMEOUTS: Record<string, number> = {
+   REASONING: 120_000,
+-  EXPLICIT: 120_000,
++  // Direct free models can be saturated. Fail fast enough to leave time for
++  // the automatic tier fallback before VS Code's request timeout expires.
++  EXPLICIT: 45_000,
+ };
+@@ -552,3 +564,6 @@ async function forwardToOpenAI(
    if (req.top_p !== undefined) body.top_p = req.top_p;
 +  if (req.stop !== undefined) body.stop = req.stop;
 +  if (req.tools?.length) body.tools = req.tools;
@@ -32,24 +30,25 @@ index f783a43..3675f77 100644
 -
 +
    const url = `${config.baseUrl}/chat/completions`;
-   logger.info(`-> ${provider}: ${modelName} (tier=${tier}, stream=${stream})`);
+@@ -675,2 +690,2 @@ export async function forwardRequest(
+   }
+-}
+\ No newline at end of file
++}
 diff --git a/src/server.ts b/src/server.ts
-index d65312a..7de2ca3 100644
+index c1ee108..5b22341 100644
 --- a/src/server.ts
 +++ b/src/server.ts
-@@ -201,5 +201,5 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) {
-   let tier: string;
+@@ -202,4 +202,6 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
    let reasoning: string;
++  let explicitFallbackTier: string | undefined;
++  let explicitFallbackModels: string[] = [];
 -
 +
 -  if (requestedModel === "auto" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
 +  if (requestedModel === "auto" || requestedModel === "automatic" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
      // Check for user mode override (e.g., "max mode: ...", "/complex ...", "[reasoning] ...")
-@@ -226,6 +226,14 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) {
-       reasoning = decision.reasoning;
--
-+
-       logger.info(`[${stats.requests + 1}] Classified: tier=${tier} model=${routedModel} confidence=${decision.confidence.toFixed(2)} | ${reasoning}`);
+@@ -228,2 +230,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
      }
 +  } else if (/^tier\/(simple|medium|complex|reasoning)$/i.test(requestedModel)) {
 +    const requestedTier = requestedModel.slice("tier/".length).toUpperCase();
@@ -60,10 +59,49 @@ index d65312a..7de2ca3 100644
 +    reasoning = `selected tier: ${requestedTier.toLowerCase()}`;
 +    logger.info(`[${stats.requests + 1}] Selected: tier=${tier} model=${routedModel}`);
    } else {
-     // Explicit model requested — pass through
-@@ -304,6 +313,36 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
-       owned_by: "clawrouter",
-       permission: [],
+@@ -233,2 +243,23 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+     reasoning = `explicit model: ${requestedModel}`;
++    // Direct OpenRouter choices should remain the first attempt, but free
++    // endpoints are often saturated. Precompute a normal automatic route so
++    // timeout/rate-limit/upstream failures can recover without a manual retry.
++    if (requestedModel.startsWith("openrouter/")) {
++      const fallbackDecision = route(prompt, systemPrompt, maxTokens, {
++        config: getRoutingConfig(),
++        modelPricing,
++      });
++      explicitFallbackTier = fallbackDecision.tier;
++      const routingCfg = getRoutingConfig();
++      const fallbackConfig = routingCfg.tiers[
++        explicitFallbackTier as keyof typeof routingCfg.tiers
++      ];
++      explicitFallbackModels = [
++        fallbackDecision.model,
++        ...(fallbackConfig?.fallback ?? []),
++      ].filter((model, index, models) => (
++        model !== routedModel && models.indexOf(model) === index
++      ));
++      reasoning += ` | automatic fallback: ${explicitFallbackTier.toLowerCase()}`;
++    }
+     logger.info(`[${stats.requests + 1}] Passthrough: model=${routedModel}`);
+@@ -256,2 +287,4 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+     }
++  } else {
++    modelsToTry.push(...explicitFallbackModels);
+   }
+@@ -262,6 +295,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse)
+       if (modelToTry !== routedModel) {
+-        logger.info(`[${stats.requests}] Falling back to ${modelToTry}`);
++        logger.info(`[${stats.requests}] Falling back to ${modelToTry} (tier=${explicitFallbackTier ?? tier})`);
+         res.setHeader("X-ClawRouter-Model", modelToTry);
++        res.setHeader("X-ClawRouter-Tier", explicitFallbackTier ?? tier);
+       }
+-      await forwardRequest(chatReq, modelToTry, tier, res, stream);
++      const attemptTier = modelToTry === routedModel
++        ? tier
++        : (explicitFallbackTier ?? tier);
++      await forwardRequest(chatReq, modelToTry, attemptTier, res, stream);
+       return; // success
+@@ -302,2 +339,32 @@ function handleListModels(_req: IncomingMessage, res: ServerResponse) {
      },
 +    {
 +      id: "automatic",
@@ -96,11 +134,7 @@ index d65312a..7de2ca3 100644
 +      owned_by: "auto-model-switcher",
 +    },
      {
-       id: "anthropic/claude-opus-4-6",
-       object: "model",
-@@ -344,6 +382,16 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
-   }));
- }
+@@ -345,2 +412,12 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
 -
 +
 +async function handleUpstreamHealth(_req: IncomingMessage, res: ServerResponse) {
@@ -114,14 +148,8 @@ index d65312a..7de2ca3 100644
 +}
 +
  /**
-  * Handle GET /stats
-  */
-@@ -414,6 +462,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
-       handleListModels(req, res);
-     } else if (method === "GET" && url === "/health") {
+@@ -416,2 +493,4 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
        handleHealth(req, res);
 +    } else if (method === "GET" && url === "/upstream-health") {
 +      await handleUpstreamHealth(req, res);
      } else if (method === "GET" && url === "/stats") {
-       handleStats(req, res);
-     } else if (method === "POST" && url === "/reload") {

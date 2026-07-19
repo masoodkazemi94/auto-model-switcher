@@ -45,12 +45,13 @@ the model behind a tier without an extension update.
 | **Balanced** | General coding tier for everyday development. |
 | **Complex** | Strongest free tier for large or difficult changes. |
 | **Reasoning** | Reasoning tier for analysis, planning, and difficult debugging. |
-| **Direct model** (e.g. *Tencent: Hy3 (free)*) | Sends the request straight to that model — no tier classification, no FreeRouter fallbacks. |
+| **Direct model** (e.g. *Tencent: Hy3 (free)*) | Tries that model first; on timeout, rate limit, or upstream failure, continues through an automatically selected free tier. |
 
 Every eligible free model also appears as an individual **direct** choice below
 the routing tiers. Direct choices follow the live free catalog: newly eligible
 models appear after a refresh, while expired or paid models disappear
-automatically.
+automatically. A healthy direct model remains pinned. Fallback happens only
+when the direct attempt fails before streaming begins.
 
 ## How free models are discovered
 
@@ -148,7 +149,7 @@ immediately — no reinstall required.
 | --- | --- | --- | --- |
 | `endpoint` | string | `http://127.0.0.1:18800` | Local FreeRouter base URL. Must be http(s) and must not contain credentials. |
 | `connectionTimeoutMs` | number | `3000` | Timeout for connecting to the router health endpoint. |
-| `requestTimeoutMs` | number | `120000` | Timeout for a chat completion request. |
+| `requestTimeoutMs` | number | `180000` | Timeout for the complete request, including a direct-model fallback. |
 | `healthCheckTimeoutMs` | number | `2000` | Timeout for the status-bar health check. |
 | `showTiers` | boolean | `true` | Show the Automatic/Fast/Balanced/Complex/Reasoning tiers. |
 | `showDirectModels` | boolean | `true` | Show individual eligible free models. |
@@ -260,8 +261,16 @@ auto-model-switcher update-models
 
 ### 502 — Upstream failure
 
-OpenRouter or the model provider is unreachable. Retry later; the tiers retry
-their free fallbacks automatically.
+OpenRouter or the model provider is unreachable. Tiers retry their free
+fallbacks automatically. Direct models also fall back when the failure occurs
+before streaming begins; a stalled stream cannot be replayed safely after
+partial output has reached VS Code.
+
+### Direct model timed out
+
+Shared free capacity was saturated. The router gives a direct model 45 seconds,
+then retries through the tier selected for that prompt. Use
+`auto-model-switcher logs` to see both the requested model and actual fallback.
 
 ### Missing metadata
 

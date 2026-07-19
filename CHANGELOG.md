@@ -31,6 +31,10 @@ follows a simple date-based log; releases are tagged from `main`.
 - Dynamic context and output limits remain correct and are never advertised
   larger than the selected backend supports.
 - "Automatic" stays distinct from VS Code's built-in "Auto" label.
+- Direct free models fail over after 45 seconds, rate limits, or upstream
+  errors to the prompt's automatically selected tier and free fallback list.
+- The extension request timeout is now 180 seconds so one direct attempt and
+  the first automatic fallback have time to complete.
 - Service control is performed through fixed CLI commands (no shell
   interpolation of untrusted values).
 

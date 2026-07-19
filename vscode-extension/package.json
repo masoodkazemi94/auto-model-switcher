@@ -2,7 +2,7 @@
   "name": "auto-model-switcher",
   "displayName": "Auto Model Switcher",
   "description": "Use automatically ranked OpenRouter free models in VS Code Chat and Agent mode.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "auto-model-switcher",
   "license": "MIT",
   "repository": {
@@ -110,9 +110,9 @@
         },
         "autoModelSwitcher.requestTimeoutMs": {
           "type": "number",
-          "default": 120000,
+          "default": 180000,
           "minimum": 1000,
-          "description": "Timeout in milliseconds for a chat completion request to the local router."
+          "description": "Timeout in milliseconds for a complete chat request, including router fallbacks."
         },
         "autoModelSwitcher.healthCheckTimeoutMs": {
           "type": "number",
